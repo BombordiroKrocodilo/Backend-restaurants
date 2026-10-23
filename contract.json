@@ -1,0 +1,16 @@
+{
+  "base_url": "http://localhost:8000",
+  "resource": "restaurants",
+  "id_field": "id",
+  "missing_id": "999999",
+  "list_key": null,
+  "create": { "title": "Пушкин", "address": "Тверская 1", "cuisine": "русская" },
+  "update": { "cuisine": "европейская" },
+  "required_field": "title",
+  "errors": [
+    { "body": { "title": "" }, "field": "title" },
+    { "body": { "address": "" }, "field": "address" },
+    { "body": { "cuisine": "" }, "field": "cuisine" }
+  ],
+  "filter": { "param": "cuisine", "value": "русская", "other": "итальянская" }
+}
