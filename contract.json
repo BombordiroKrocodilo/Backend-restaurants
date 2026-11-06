@@ -1,0 +1,42 @@
+{
+  "base_url": "http://localhost:8000",
+  "resource": "restaurants",
+  "id_field": "id",
+  "missing_id": "999999",
+  "list_key": null,
+  "create": { "title": "Пушкин", "address": "Тверская 1", "cuisine": "русская" },
+  "update": { "cuisine": "европейская" },
+  "required_field": "title",
+  "errors": [
+    { "body": { "title": "" }, "field": "title" },
+    { "body": { "address": "" }, "field": "address" },
+    { "body": { "cuisine": "" }, "field": "cuisine" }
+  ],
+  "filter": { "param": "cuisine", "value": "русская", "other": "итальянская" },
+
+  "text_field": "title",
+  "search": { "param": "q", "field": "title" },
+  "child": {
+    "resource": "reviews",
+    "create": { "author": "Иванов", "rating": 5, "text": "Отлично" },
+    "parent_field": "restaurant_id"
+  },
+  "rule": {
+    "description": "Один автор оставляет только один отзыв на ресторан",
+    "parent": { "title": "Правило-ресторан", "address": "Тест 1", "cuisine": "русская" },
+    "setup": [
+      {
+        "method": "POST",
+        "path": "/api/restaurants/{id}/reviews",
+        "body": { "author": "Иванов", "rating": 5, "text": "Первый отзыв" }
+      }
+    ],
+    "violate": {
+      "method": "POST",
+      "path": "/api/restaurants/{id}/reviews",
+      "body": { "author": "Иванов", "rating": 4, "text": "Второй отзыв тем же автором" }
+    },
+    "expect_status": 409
+  },
+  "stats_path": "/api/restaurants/stats"
+}
