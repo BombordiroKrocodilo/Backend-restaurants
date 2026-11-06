@@ -27,7 +27,23 @@ pip install -r requirements.txt
 uvicorn main:app --port 8000 --reload
 ```
 
-Сервис работает на `http://localhost:8000`.
+Сервис работает на `http://localhost:8000`. Swagger UI — http://localhost:8000/docs
+
+# 1. база
+createdb -U postgres restaurants    # или через psql / pgAdmin
+
+# 2. .env
+cp .env.example .env
+# отредактировать DATABASE_URL под свой пароль
+
+# 3. схема из репозитория
+alembic upgrade head
+
+# 4. (опционально) тестовые данные
+python seeds.py
+
+# 5. сервер
+uvicorn main:app --port 8000 --reload
 
 ## Эндпоинты
 
@@ -47,16 +63,115 @@ uvicorn main:app --port 8000 --reload
 
 ```mermaid
 erDiagram
-    parents ||--o{ children : "имеет"
-    parents {
+    restaurants ||--o{ reviews : "имеет"
+    restaurants {
         int id PK
         varchar title
+        varchar address
+        varchar cuisine
     }
-    children {
+    reviews {
         int id PK
-        int parent_id FK
+        int restaurant_id FK
+        varchar author
+        int rating
+        varchar text
+        timestamptz created_at
     }
 ```
+## Валидация и правила
+
+- `title`, `address`, `cuisine` — обязательные непустые строки.
+- `author`, `text` — обязательные непустые строки; `rating` — целое 1..5.
+- Ошибки валидации: `400` и `{"error": "...", "field": "..."}`.
+- **Правило темы:** один автор оставляет только один отзыв на ресторан.
+  При нарушении — `409` и объяснение. Гарантируется `UNIQUE (restaurant_id, author)` в БД; проверка и запись — в одной транзакции.
+
+  ## Миграции и сиды
+
+```bash
+alembic revision --autogenerate -m "описание"   # новая миграция
+alembic upgrade head                            # применить
+alembic downgrade -1                            # откатить
+python seeds.py                                 # тестовые данные (идемпотентно)
+```
+
+Схема создаётся только из репозитория (`alembic upgrade head`), руками в `psql` ничего не создаётся.
+
+## Индекс и EXPLAIN
+
+Функциональный индекс на `lower(title)` с `text_pattern_ops`, создан миграцией Alembic:
+
+```python
+Index(
+    "ix_restaurants_title_lower",
+    func.lower(Restaurant.title),
+    postgresql_ops={"lower": "text_pattern_ops"},
+)
+```
+
+Поиск префиксный: `GET /api/restaurants?q=restoran 99` → `WHERE lower(title) LIKE 'restoran 99%'`.
+
+Запрос:
+
+```sql
+EXPLAIN ANALYZE SELECT * FROM restaurants WHERE lower(title) LIKE 'restoran 99%';
+```
+
+Вывод:
+
+```
+Bitmap Heap Scan on restaurants  (cost=4.63..26.60 rows=18 width=47) (actual time=0.041..0.076 rows=22 loops=1)
+  Filter: (lower((title)::text) ~~ 'restoran 99%'::text)
+  Heap Blocks: exact=4
+  ->  Bitmap Index Scan on ix_restaurants_title_lower  (cost=0.00..4.63 rows=35 width=0) (actual time=0.027..0.027 rows=22 loops=1)
+        Index Cond: ((lower((title)::text) ~>=~ 'restoran 99'::text) AND (lower((title)::text) ~<~ 'restoran 9:'::text))
+Planning Time: 2.376 ms
+Execution Time: 0.161 ms
+```
+
+База использует индекс `ix_restaurants_title_lower` (`Bitmap Index Scan` вместо `Seq Scan`).
+
+## Правило 409
+
+Один автор оставляет только один отзыв на ресторан. Проверка реализована ограничением БД:
+
+```sql
+UNIQUE (restaurant_id, author)
+```
+
+при попытке вставить дубль SQLAlchemy получает `IntegrityError`, транзакция откатывается, сервер возвращает:
+
+```http
+HTTP/1.1 409 Conflict
+{"error": "этот автор уже оставлял отзыв на этот ресторан", "field": "author"}
+```
+
+Проверка и запись выполняются в одной транзакции (`flush` + `commit` в одном блоке с `try/except IntegrityError`).
+
+## Статистика
+
+`GET /api/restaurants/stats` — один агрегатный SQL, считает база:
+
+```sql
+SELECT restaurants.id, restaurants.title,
+       COUNT(reviews.id) AS reviews_count,
+       AVG(reviews.rating) AS avg_rating
+FROM restaurants
+LEFT JOIN reviews ON reviews.restaurant_id = restaurants.id
+GROUP BY restaurants.id, restaurants.title
+ORDER BY restaurants.id;
+```
+
+Пример ответа:
+
+```json
+[
+  {"restaurant_id": 1, "title": "Пушкин", "reviews_count": 2, "avg_rating": 4.5},
+  {"restaurant_id": 2, "title": "Марио",  "reviews_count": 1, "avg_rating": 5.0}
+]
+```
+
 
 ## Интерфейс
 

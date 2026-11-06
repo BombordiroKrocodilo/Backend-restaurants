@@ -1,53 +1,173 @@
-# Запросы для демонстрации. В VS Code нужно расширение REST Client, в JetBrains IDE всё встроено.
-# Над каждым запросом появляется ссылка «Send Request».
-# items заменить на свой ресурс, тела на поля своей сущности.
+# Запросы для лабы 2 (PostgreSQL). VS Code: REST Client. Выполнять сверху вниз.
+# Перед прогоном очистить БД:
+#   psql -U postgres -d restaurants -c "TRUNCATE reviews, restaurants RESTART IDENTITY CASCADE;"
 
 @base = http://localhost:8000
 
 ### Сервис жив?
 GET {{base}}/health
 
-### Создать
+### Создать ресторан 1
 POST {{base}}/api/restaurants
 Content-Type: application/json
 
 { "title": "Пушкин", "address": "Тверская 1", "cuisine": "русская" }
 
-### Список
+### Создать ресторан 2
+POST {{base}}/api/restaurants
+Content-Type: application/json
+
+{ "title": "Марио", "address": "Арбат 10", "cuisine": "итальянская" }
+
+### Создать ресторан 3
+POST {{base}}/api/restaurants
+Content-Type: application/json
+
+{ "title": "Токио", "address": "Ленинский 20", "cuisine": "японская" }
+
+### Создать ресторан 4 (под правило)
+POST {{base}}/api/restaurants
+Content-Type: application/json
+
+{ "title": "Тест-правило", "address": "Тестовая 1", "cuisine": "русская" }
+
+### Список ресторанов
 GET {{base}}/api/restaurants
 
-### Список с пагинацией и фильтром
-GET {{base}}/api/restaurants?limit=10&offset=0&cuisine=русская
+### Создать отзыв на ресторан 1 (Иванов)
+POST {{base}}/api/restaurants/1/reviews
+Content-Type: application/json
 
-### Получить одну запись
+{ "author": "Иванов", "rating": 5, "text": "Отлично, приду ещё" }
+
+### Создать отзыв на ресторан 1 (Петров)
+POST {{base}}/api/restaurants/1/reviews
+Content-Type: application/json
+
+{ "author": "Петров", "rating": 4, "text": "Хорошо, но шумно" }
+
+### Создать отзыв на ресторан 2 (Сидоров)
+POST {{base}}/api/restaurants/2/reviews
+Content-Type: application/json
+
+{ "author": "Сидоров", "rating": 5, "text": "Паста супер" }
+
+### Создать отзыв на ресторан 3 (Иванов, другой ресторан — можно)
+POST {{base}}/api/restaurants/3/reviews
+Content-Type: application/json
+
+{ "author": "Иванов", "rating": 4, "text": "Суши свежие" }
+
+### Список отзывов ресторана 1
+GET {{base}}/api/restaurants/1/reviews
+
+### Список отзывов ресторана 2
+GET {{base}}/api/restaurants/2/reviews
+
+### Список отзывов ресторана 4 (пусто)
+GET {{base}}/api/restaurants/4/reviews
+
+### Получить ресторан 1
 GET {{base}}/api/restaurants/1
 
-### Изменить (PATCH)
+### Неизвестный id
+GET {{base}}/api/restaurants/999999
+
+### Изменить (PATCH) ресторан 1
 PATCH {{base}}/api/restaurants/1
 Content-Type: application/json
 
 { "cuisine": "европейская" }
 
-### Заменить (PUT)
+### Заменить (PUT) ресторан 1
 PUT {{base}}/api/restaurants/1
 Content-Type: application/json
 
 { "title": "Пушкин", "address": "Тверская 1", "cuisine": "русская" }
 
-### Удалить
-DELETE {{base}}/api/restaurants/1
+### Пустой title
+POST {{base}}/api/restaurants
+Content-Type: application/json
 
-### После удаления должен быть 404
-GET {{base}}/api/restaurants/1
+{ "title": "", "address": "x", "cuisine": "x" }
 
-### Сломанный JSON, должен быть 400
+### Пустой address
+POST {{base}}/api/restaurants
+Content-Type: application/json
+
+{ "title": "x", "address": "", "cuisine": "x" }
+
+### Сломанный JSON
 POST {{base}}/api/restaurants
 Content-Type: application/json
 
 { "title":
 
-### Пустое обязательное поле, должен быть 400
+### Рейтинг вне 1..5
+POST {{base}}/api/restaurants/1/reviews
+Content-Type: application/json
+
+{ "author": "Сидоров", "rating": 9, "text": "Много" }
+
+### Пустой author
+POST {{base}}/api/restaurants/1/reviews
+Content-Type: application/json
+
+{ "author": "", "rating": 5, "text": "x" }
+
+### Поиск: верхний регистр
+GET {{base}}/api/restaurants?q=ПУШ
+
+### Поиск: префикс
+GET {{base}}/api/restaurants?q=мар
+
+### Поиск: ничего не найдено
+GET {{base}}/api/restaurants?q=абракадабра
+
+### Поиск + фильтр + пагинация
+GET {{base}}/api/restaurants?q=пуш&cuisine=русская&limit=10&offset=0
+
+### Создать ресторан с SQL-инъекцией в title
 POST {{base}}/api/restaurants
 Content-Type: application/json
 
-{ "title": "", "address": "x", "cuisine": "x" }
+{ "title": "'); DROP TABLE restaurants;--", "address": "x", "cuisine": "x" }
+
+### Список ресторанов после инъекции
+GET {{base}}/api/restaurants
+
+### Поиск «опасной» записи
+GET {{base}}/api/restaurants?q=DROP
+
+### Первый отзыв Иванова на ресторан 4
+POST {{base}}/api/restaurants/4/reviews
+Content-Type: application/json
+
+{ "author": "Иванов", "rating": 5, "text": "Первый отзыв" }
+
+### Второй отзыв Иванова на ресторан 4 (должен быть 409)
+POST {{base}}/api/restaurants/4/reviews
+Content-Type: application/json
+
+{ "author": "Иванов", "rating": 4, "text": "Второй отзыв" }
+
+### Отзыв Петрова на ресторан 4
+POST {{base}}/api/restaurants/4/reviews
+Content-Type: application/json
+
+{ "author": "Петров", "rating": 4, "text": "Нормально" }
+
+### Список отзывов ресторана 4
+GET {{base}}/api/restaurants/4/reviews
+
+### Статистика
+GET {{base}}/api/restaurants/stats
+
+### Удалить ресторан 3
+DELETE {{base}}/api/restaurants/3
+
+### После удаления должен быть 404
+GET {{base}}/api/restaurants/3
+
+### Отзывы удалённого ресторана (каскад)
+GET {{base}}/api/restaurants/3/reviews
